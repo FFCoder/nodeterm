@@ -11,13 +11,17 @@ are accepted under that license.
 ## Getting set up
 
 ```bash
-npm install        # also patches + rebuilds node-pty against Electron's ABI (postinstall)
+npm install        # downloads Electron, patches node-pty, then rebuilds native modules
 npm run dev        # dev mode with renderer HMR
 npm run typecheck  # tsc for both the node and web projects — the fastest correctness gate
 npm test           # vitest, unit + integration
 ```
 
 `npm run server:dev` boots the Server Edition (browser UI) if you are working on that surface.
+
+Electron 42 downloads its binary lazily, but electron-vite 5 expects that binary to exist before it
+starts. The root `postinstall` therefore runs `npm run electron:install` first. If an interrupted
+install leaves `electron-vite` reporting `Electron uninstall`, run that command once and retry.
 
 **If `src/main/node-pty-patch.test.ts` is red, your `node_modules` is unpatched — not your code.**
 Run `npm run rebuild`. node-pty 1.1.0 leaks a pty device per spawn on macOS

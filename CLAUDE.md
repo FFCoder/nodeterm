@@ -44,7 +44,7 @@ means — and what you may assume when writing a feature — is three tiers, not
 ## Commands
 
 ```bash
-npm install        # deps + rebuilds node-pty against Electron's ABI (postinstall hook)
+npm install        # deps + Electron binary + native rebuilds (postinstall hook)
 npm run dev        # dev mode with renderer HMR
 npm run build      # production build into out/
 npm start          # preview the production build (electron-vite preview)
@@ -52,11 +52,18 @@ npm run typecheck  # tsc for both node (main/preload) and web (renderer) project
 npm run rebuild    # re-run electron-rebuild for node-pty if you hit ABI/native errors
 ```
 
-**`rebuild` and `postinstall` both run `scripts/patch-node-pty.mjs` first, and that is not
-optional.** node-pty 1.1.0's darwin `pty_posix_spawn` leaks a ptmx device on every SUCCESSFUL spawn
+**`rebuild` and `postinstall` both run `scripts/patch-node-pty.mjs` immediately before
+electron-rebuild, and that is not optional.** node-pty 1.1.0's darwin `pty_posix_spawn` leaks a
+ptmx device on every SUCCESSFUL spawn
 (an off-by-one in the low-fd cleanup) and master+slave on every FAILED one; on this app's spawn
 churn that exhausts `kern.tty.ptmx_max` within hours, and terminals then simply stop opening. The
 script rewrites `node_modules/node-pty/src/unix/pty.cc` before electron-rebuild compiles it.
+
+**`postinstall` must run `npm run electron:install` before electron-rebuild.** Electron 42 removed
+its dependency postinstall and now downloads the binary lazily from `require('electron')`, while
+electron-vite 5 reads `electron/path.txt` directly and otherwise throws the misleading `Electron
+uninstall`. A clean install therefore needs the explicit binary-install step; do not remove it as
+redundant.
 
 `src/main/node-pty-patch.test.ts` asserts the marker is present in those sources, so a node-pty
 upgrade that silently drops the patch fails loudly. **If that test is red, your `node_modules` is

@@ -228,13 +228,14 @@ The full inventory of what nodeterm writes where (and what the script keeps, lik
 
 ## 🛠 Build from source
 
-Requires Node.js 20+ on macOS or Linux (tmux recommended — it's what makes sessions
-survive restarts). A source checkout does **not** carry the bundled tmux: run
+Requires Node.js `^22.22.2`, `^24.15.0`, or `>=26` on macOS or Linux. tmux is
+recommended — it's what makes sessions survive restarts. A source checkout does **not**
+carry the bundled tmux: run
 `node scripts/build-tmux.mjs` once on macOS to build it into `resources/bin/tmux` (the
 release job does this automatically), or just install tmux yourself.
 
 ```bash
-npm install        # deps + rebuilds node-pty against Electron's ABI (postinstall)
+npm install        # deps + Electron binary + native rebuilds (postinstall)
 npm run dev        # dev mode with renderer HMR
 npm run build      # production build into out/
 npm start          # preview the production build

@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           # No `cache: npm` here on purpose: this is the self-hosted Mac runner, whose ~/.npm
           # is already warm across runs. setup-node's post-run cache SAVE step (a tarball upload
           # to GitHub's cache service) bought nothing but failed the whole release-mac job on a
