@@ -10,6 +10,8 @@ are accepted under that license.
 
 ## Getting set up
 
+Use Node.js `^22.22.2`, `^24.15.0`, or `>=26`; `.nvmrc` selects the Node 22 line.
+
 ```bash
 npm install        # downloads Electron, patches node-pty, then rebuilds native modules
 npm run dev        # dev mode with renderer HMR
@@ -17,7 +19,8 @@ npm run typecheck  # tsc for both the node and web projects — the fastest corr
 npm test           # vitest, unit + integration
 ```
 
-`npm run server:dev` boots the Server Edition (browser UI) if you are working on that surface.
+Server Edition needs a Node-ABI dependency install rather than the desktop postinstall; follow the
+short setup sequence in `docs/SERVER.md` before running `npm run server:dev`.
 
 Electron 42 downloads its binary lazily, but electron-vite 5 expects that binary to exist before it
 starts. The root `postinstall` therefore runs `npm run electron:install` first. If an interrupted

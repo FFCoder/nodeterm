@@ -2,9 +2,9 @@
 # run-dev.sh — kill the running nodeterm and launch a fresh one from this branch.
 #
 # Kills the installed /Applications/nodeterm.app and any `electron-vite dev` instance,
-# builds the renderer+main (npm run build — native modules like node-pty ship N-API
-# prebuilds, so electron-rebuild is NOT needed), then launches the Electron binary
-# against the built out/ with this branch's code. Logs to stdout/stderr.
+# builds the renderer+main, then launches the Electron binary against the built out/ with this
+# branch's code. Dependencies must already have been prepared for Electron by the root install.
+# Logs to stdout/stderr.
 #
 # Usage:  ./scripts/run-dev.sh          # build, then run
 #         ./scripts/run-dev.sh --no-build   # skip the build (reuse existing out/)
@@ -41,7 +41,7 @@ fi
 ELECTRON_BIN="node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
 if [[ ! -x "$ELECTRON_BIN" ]]; then
   echo "✗ Electron binary not found at $ELECTRON_BIN" >&2
-  echo "  Run:  node node_modules/electron/install.js" >&2
+  echo "  Run:  npm run electron:install && npm run rebuild" >&2
   exit 1
 fi
 

@@ -3,9 +3,10 @@ setlocal EnableExtensions
 rem =============================================================================================
 rem bootstrap-windows.bat — take a fresh Windows checkout to an installed, buildable nodeterm.
 rem
-rem What it does: verifies the toolchain a native-module Electron build needs (Node >= 20, npm,
-rem Visual Studio Build Tools with the C++ workload, Python 3 — node-pty and smart-whisper are
-rem compiled against Electron's ABI by the npm `postinstall` hook), then runs `npm ci`.
+rem What it does: verifies the toolchain a native-module Electron build needs (a package-supported
+rem Node version, npm, Visual Studio Build Tools with the C++ workload, Python 3 — node-pty and
+rem smart-whisper are compiled against Electron's ABI by the npm `postinstall` hook), then runs
+rem `npm ci`.
 rem
 rem What it does NOT do: install anything machine-wide. Each missing tool is reported with the
 rem exact winget command to run — installs that touch Program Files are a decision for the
@@ -34,7 +35,7 @@ echo === nodeterm Windows bootstrap ===
 echo Repository: "%REPO%"
 echo.
 
-rem --- Node.js >= 20 ----------------------------------------------------------------------------
+rem --- Node.js ^22.22.2, ^24.15.0, or >=26 -------------------------------------------------------
 where node >nul 2>nul
 if errorlevel 1 (
     echo [MISSING] Node.js was not found on PATH.
@@ -42,13 +43,14 @@ if errorlevel 1 (
     echo   then open a NEW prompt and rerun this script.
     exit /b 1
 )
-for /f "tokens=1 delims=." %%v in ('node -p "process.versions.node"') do set "NODE_MAJOR=%%v"
-if %NODE_MAJOR% LSS 20 (
-    echo [FAILED] Node.js ^>= 20 is required; found major version %NODE_MAJOR%.
+for /f "delims=" %%v in ('node -p "process.versions.node"') do set "NODE_VERSION=%%v"
+node -e "const [M,m,p]=process.versions.node.split('.').map(Number); const n=M*1000000+m*1000+p; const floor=({22:22022002,24:24015000})[M]??(M>=26?0:Infinity); process.exit(n>=floor?0:1)"
+if errorlevel 1 (
+    echo [FAILED] Node.js ^22.22.2, ^24.15.0, or ^>=26 is required; found %NODE_VERSION%.
     echo   Upgrade:  winget install OpenJS.NodeJS.LTS
     exit /b 1
 )
-echo [OK] Node.js major %NODE_MAJOR%
+echo [OK] Node.js %NODE_VERSION%
 
 rem --- Visual Studio Build Tools with the C++ workload (node-gyp / electron-rebuild) ------------
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"

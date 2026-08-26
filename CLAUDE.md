@@ -43,6 +43,8 @@ means — and what you may assume when writing a feature — is three tiers, not
 
 ## Commands
 
+Use Node.js `^22.22.2`, `^24.15.0`, or `>=26`; `.nvmrc` selects the Node 22 line.
+
 ```bash
 npm install        # deps + Electron binary + native rebuilds (postinstall hook)
 npm run dev        # dev mode with renderer HMR
@@ -52,26 +54,27 @@ npm run typecheck  # tsc for both node (main/preload) and web (renderer) project
 npm run rebuild    # re-run electron-rebuild for node-pty if you hit ABI/native errors
 ```
 
-**`rebuild` and `postinstall` both run `scripts/patch-node-pty.mjs` immediately before
-electron-rebuild, and that is not optional.** node-pty 1.1.0's darwin `pty_posix_spawn` leaks a
-ptmx device on every SUCCESSFUL spawn
+**Every native node-pty rebuild runs `scripts/patch-node-pty.mjs` immediately before compilation,
+and that is not optional.** The desktop `rebuild` and `postinstall` scripts target Electron;
+`server:rebuild` targets plain Node for Server Edition and Docker. node-pty 1.1.0's darwin
+`pty_posix_spawn` leaks a ptmx device on every SUCCESSFUL spawn
 (an off-by-one in the low-fd cleanup) and master+slave on every FAILED one; on this app's spawn
 churn that exhausts `kern.tty.ptmx_max` within hours, and terminals then simply stop opening. The
-script rewrites `node_modules/node-pty/src/unix/pty.cc` before electron-rebuild compiles it.
+script rewrites `node_modules/node-pty/src/unix/pty.cc` before the native compiler runs.
 
-**`postinstall` must run `npm run electron:install` before electron-rebuild.** Electron 42 removed
+**`postinstall` must run `npm run electron:install` during the root install.** Electron 42 removed
 its dependency postinstall and now downloads the binary lazily from `require('electron')`, while
 electron-vite 5 reads `electron/path.txt` directly and otherwise throws the misleading `Electron
-uninstall`. A clean install therefore needs the explicit binary-install step; do not remove it as
-redundant.
+uninstall`. A clean desktop install therefore needs the explicit binary-install step before an
+electron-vite command launches Electron (`dev` / `preview`); a headless `electron-vite build` does
+not need the executable. The native rebuild itself needs Electron's version, not its downloaded
+executable — its ordering constraint is only that the node-pty patch runs immediately before it.
 
 `src/main/node-pty-patch.test.ts` asserts the marker is present in those sources, so a node-pty
 upgrade that silently drops the patch fails loudly. **If that test is red, your `node_modules` is
 unpatched, not your code** — run `npm run rebuild`. It deliberately does not measure descriptors
 (that is environment-dependent); it checks the source the native module is built from. Upstream:
 microsoft/node-pty#950 — if the fix lands there, delete the script, its wiring and that test.
-```
-```
 
 `npm test` runs the vitest suite (unit + integration; the remote e2e suites skip when the
 companion server repo isn't checked out). `npm run typecheck` is the fastest correctness gate.
@@ -96,8 +99,8 @@ The codebase is split by Electron process boundary — keep code on the correct 
   (`src/shared/rpc.ts`) that a browser-side `window.nodeTerminal` shim
   (`src/renderer/bridge/`) consumes. Boots the same core services via
   `ServerPlatform` (`src/server/platform-server.ts`). Single-user auth
-  (scrypt + httpOnly cookie + Origin check). `npm run server:dev` to try;
-  docs/SERVER.md for details. `src/server` must not import electron or
+  (scrypt + httpOnly cookie + Origin check). Follow the Node-ABI setup in docs/SERVER.md, then
+  run `npm run server:dev`. `src/server` must not import electron or
   `src/main` (enforced by `src/server/no-electron.test.ts`). **Phase 3a** also
   serves fs/git/commit handlers (editor/diff/source-control now work in the
   browser) plus a web folder/file picker (in-app server-directory browser,
@@ -2251,9 +2254,10 @@ update feed), but our pipeline is electron-builder end-to-end and NSIS is built 
 extra dependency, and is what electron-updater's generic provider expects on Windows — so
 Squirrel was not adopted. Builds are **unsigned** (no Windows cert; electron-builder skips
 signing when no cert env is present). `bootstrap-windows.bat` (repo root) takes a fresh Windows
-machine to a built checkout: it verifies Node ≥ 20 / VS Build Tools C++ / Python 3 with exact
-winget hints (it never installs machine-wide tools itself, and refuses to run elevated) and runs
-`npm ci`. `.github/workflows/win-package-smoke.yml` is a **workflow_dispatch-only** packaging
+machine to a built checkout: it verifies a `package.json`-supported Node version / VS Build Tools
+C++ / Python 3 with exact winget hints (it never installs machine-wide tools itself, and refuses
+to run elevated) and runs `npm ci`. `.github/workflows/win-package-smoke.yml` is a
+**workflow_dispatch-only** packaging
 smoke on windows-latest — build only, never publishes. **Follow-ups, in order:** Windows
 auto-update wiring (electron-updater NSIS leg + `latest.yml` on the nodeterm.dev feed — blocked
 on signing: an unsigned auto-update is a downgrade in trust), a release.yml Windows job, and the

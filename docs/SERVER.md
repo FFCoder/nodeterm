@@ -12,7 +12,14 @@ unchanged. It boots the same Electron-free core services (`src/core/`) through a
 
 ## Quickstart
 
+Use Node.js `^22.22.2`, `^24.15.0`, or `>=26` and install tmux for session continuity. The native
+rebuild also needs `make`, a C/C++ compiler and Python 3 (`sudo apt install build-essential python3`
+on Debian/Ubuntu; `sudo dnf install make gcc gcc-c++ python3` on Fedora/RHEL; Xcode command line
+tools plus Python 3 on macOS).
+
 ```bash
+npm ci --ignore-scripts
+npm run server:rebuild
 npm run server:dev
 ```
 
@@ -20,6 +27,10 @@ npm run server:dev
 (bundles `src/server/main.ts` → `out/server/main.cjs` via esbuild) and finally
 `node out/server/main.cjs`. On a repeat run where the renderer is already built you
 can skip straight to `npm run server:start`.
+
+The `--ignore-scripts` + explicit rebuild sequence is deliberate: the root `postinstall`
+targets Electron's native ABI, while Server Edition runs under plain Node. Run `npm install`
+before returning to desktop development to restore the Electron binary and native rebuilds.
 
 ### First run (setup token)
 
@@ -50,8 +61,10 @@ to `/login`. It is ignored once a password already exists (it never overwrites).
 ### Manual build + run
 
 ```bash
+npm ci --ignore-scripts
 npm run build         # electron-vite build → out/renderer, out/core
 npm run server:build  # esbuild → out/server/main.cjs
+npm run server:rebuild # patch node-pty + compile native modules for Node's ABI
 npm run server:start  # node out/server/main.cjs
 ```
 
@@ -89,16 +102,17 @@ curl -fsSL https://raw.githubusercontent.com/eneskirca/nodeterm/main/scripts/ins
 
 The installer (`scripts/install-server.sh`) is idempotent — re-run it any time to update. It:
 
-- needs only `git`, `curl` and `tar` on the host — **Node.js is no longer a prerequisite**: if a
-  system Node ≥ 20 (with npm) is present it's used as-is, otherwise the installer downloads a
-  pinned Node LTS from nodejs.org into `~/.nodeterm-server-app/runtime/node` and uses it for the
-  build and the systemd service (nothing is installed system-wide; Alpine/musl hosts still need a
-  distro `nodejs`). It also warns (with the apt/dnf one-liner) if the C toolchain
-  (`make`/`gcc`/`python3`) node-pty's native build needs is missing;
+- needs `git`, `curl`, `tar` and the native build toolchain (`make`/`gcc`/`c++`/`python3`) on the
+  host — **Node.js is no longer a prerequisite**: if a system Node in the supported range
+  (`^22.22.2`, `^24.15.0`, or `>=26`) with npm is present it's used as-is, otherwise the installer
+  downloads a pinned Node 22 LTS from nodejs.org into `~/.nodeterm-server-app/runtime/node` and
+  uses it for the build and the systemd service (nothing is installed system-wide; Alpine/musl
+  hosts still need distro `nodejs` + build packages). A missing toolchain stops immediately with
+  the exact apt/dnf command;
 - clones (or `git pull`s) the repo into `~/.nodeterm-server-app`;
-- installs deps (`npm ci --ignore-scripts`, then `npm rebuild node-pty` against Node's ABI —
-  the same trap the [Docker](#docker--dokploy) build documents) and builds the renderer +
-  server bundle;
+- installs deps with `npm ci --ignore-scripts`, builds the renderer + server bundle, then runs
+  `npm run server:rebuild` to patch node-pty and compile the native modules against Node's ABI
+  (the same trap documented by the [Docker build](#docker--dokploy));
 - installs a **systemd** service (`NODETERM_HEADLESS=1`, `Restart=on-failure`, journald logs):
   a system unit at `/etc/systemd/system/nodeterm-server.service` when run as root, or a
   per-user unit + `loginctl enable-linger` otherwise — then enables and (re)starts it;
@@ -312,9 +326,10 @@ and the clipboard runs in a secure context.
 
 Things the image decides for you (see the Dockerfile comments for the full why):
 
-- **node-pty is compiled against Node's ABI, not Electron's.** The repo's `postinstall` runs
+- **Native modules are compiled against Node's ABI, not Electron's.** The repo's `postinstall` runs
   `electron-rebuild`, which targets Electron — every install in the image uses
-  `--ignore-scripts` plus an explicit `npm rebuild node-pty`. Don't "simplify" that away.
+  `--ignore-scripts` plus `npm run server:rebuild`, which applies the required fd-leak patch before
+  compiling node-pty and smart-whisper for Node. Don't "simplify" that away.
 - **`--insecure-http` is passed** because the container must bind `0.0.0.0` for the proxy to
   reach it, and TLS lives in the proxy. Never publish the port directly on a public interface.
 - **A container restart/redeploy kills the tmux server** (it lives inside the container). The

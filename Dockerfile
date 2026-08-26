@@ -1,11 +1,9 @@
 # nodeterm Server Edition — container image (browser canvas backed by the headless server).
 #
-# The one real trap in here is node-pty's ABI: the repo's `postinstall` runs
-# `electron-rebuild -f -w node-pty`, which compiles node-pty against ELECTRON's ABI — but the
-# server runs under plain `node`, which would crash at boot with a NODE_MODULE_VERSION mismatch.
-# So every npm install below uses --ignore-scripts and the deps stage compiles node-pty against
-# Node's own ABI with an explicit `npm rebuild node-pty`. Keep the deps and runtime stages on the
-# SAME Node major (the compiled binary must match the runtime ABI).
+# The one real trap in here is native-module ABI: the repo's `postinstall` uses electron-rebuild,
+# which targets ELECTRON's ABI — but the server runs under plain `node`. So every npm install below
+# uses --ignore-scripts and the deps stage runs `server:rebuild` for Node's ABI. Keep the deps and
+# runtime stages on the SAME Node major (the compiled binaries must match the runtime ABI).
 #
 # TLS is terminated by the reverse proxy in front (Dokploy/Traefik, nginx, Caddy…): the server
 # speaks plain HTTP inside the Docker network, which is why CMD passes --insecure-http (the
@@ -17,16 +15,18 @@
 FROM node:22-bookworm AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-# --ignore-scripts skips electron-rebuild AND electron's own binary download (not needed to build)
+# --ignore-scripts skips the root postinstall: its explicit Electron download and Electron-ABI
+# native rebuild are both unnecessary for this headless build.
 RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build && npm run server:build
 
-# ---- deps: production node_modules with node-pty compiled for Node (toolchain lives here) ----
+# ---- deps: production native modules compiled for Node (toolchain lives here) ----
 FROM node:22-bookworm AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts && npm rebuild node-pty
+COPY scripts/patch-node-pty.mjs ./scripts/patch-node-pty.mjs
+RUN npm ci --omit=dev --ignore-scripts && npm run server:rebuild
 
 # ---- runtime: slim image, no compilers ----
 FROM node:22-bookworm-slim

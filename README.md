@@ -166,6 +166,8 @@ so your terminals, editors, source control, board, and agents live on a server y
 from anywhere. Single-user auth (password + secure cookie), a WebSocket bridge, and the
 exact same renderer as the desktop app.
 
+After the Node-ABI dependency setup in the [Server quickstart](./docs/SERVER.md#quickstart):
+
 ```bash
 npm run server:dev     # build + serve; open http://127.0.0.1:8443 and set a password
 ```
@@ -243,8 +245,10 @@ npm run typecheck  # fastest correctness gate
 npm test           # vitest unit + integration suite
 npm run dist       # local UNSIGNED .dmg into dist/ (smoke test)
 npm run dist:linux # AppImage + .deb into dist/ (on a Linux host)
-npm run server:dev # build + run the browser Server Edition (needs Node 22 + tmux)
 ```
+
+Server Edition runs native modules under Node rather than Electron. Follow the
+[`docs/SERVER.md` quickstart](./docs/SERVER.md#quickstart) instead of the desktop install sequence.
 
 ## ⌨️ Keyboard shortcuts
 

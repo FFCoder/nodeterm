@@ -20,7 +20,7 @@ const PTY_CC = path.resolve(__dirname, '../../node_modules/node-pty/src/unix/pty
 const PATCH_MARKER = 'NODETERM-PATCH(node-pty#950)'
 
 const HOWTO =
-  'Run `node scripts/patch-node-pty.mjs && npm run rebuild`. ' +
+  'Run `npm run rebuild`. ' +
   'If node-pty was upgraded, check https://github.com/microsoft/node-pty/issues/950 — ' +
   'if the fix landed upstream, delete scripts/patch-node-pty.mjs, its postinstall/rebuild ' +
   'wiring and this test; otherwise re-derive the anchors in the script.'

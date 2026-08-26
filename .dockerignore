@@ -10,7 +10,9 @@ build
 site
 docs
 test
-scripts
+scripts/*
+!scripts/build-codex-relay.mjs
+!scripts/patch-node-pty.mjs
 Dockerfile
 .dockerignore
 *.md

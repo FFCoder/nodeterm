@@ -29,10 +29,10 @@ APP_DIR="${NODETERM_APP_DIR:-$HOME/.nodeterm-server-app}"
 DATA_DIR="${NODETERM_DATA_DIR:-$HOME/.nodeterm-server}"
 SERVICE_NAME="nodeterm-server"
 UPDATE_SERVICE_NAME="nodeterm-server-update"
-MIN_NODE_MAJOR=20
-# When the system Node is missing or too old we provision this pinned LTS privately (see ensure_node).
-# v22.14.0 is a Node 22 "Jod" LTS release. Override with NODETERM_NODE_VERSION for a different pin.
-NODE_LTS_VERSION="${NODETERM_NODE_VERSION:-v22.14.0}"
+SUPPORTED_NODE_RANGE="^22.22.2, ^24.15.0, or >=26"
+# When the system Node is missing or unsupported we provision this pinned LTS privately (see ensure_node).
+# Override with NODETERM_NODE_VERSION for a different supported pin.
+NODE_LTS_VERSION="${NODETERM_NODE_VERSION:-v22.22.2}"
 NODE_DIST_BASE="${NODETERM_NODE_DIST_BASE:-https://nodejs.org/dist}"
 
 # ---- pretty output ---------------------------------------------------------------------------
@@ -46,25 +46,28 @@ fail() { printf '\033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
 
 command -v git >/dev/null 2>&1 || fail "git is not installed. Install it first (e.g. 'sudo apt install git' or 'sudo dnf install git')."
 
-# ---- Node.js: use a good-enough system install, else provision a private one --------------------
+# ---- Node.js: use a supported system install, else provision a private one ----------------------
 # Sets NODE_BIN (absolute — used by npm ci, the node-pty rebuild, and the systemd ExecStart) and,
 # when it provisions, prepends its bin to PATH so `node`/`npm`/`npx`/build scripts all use it. This
-# is what makes the one-tap iOS install flow work on a host whose system Node is missing or < 20.
+# is what makes the one-tap iOS install flow work on a host whose system Node is missing or stale.
+node_supported() {
+  "$1" -e 'const [M,m,p]=process.versions.node.split(".").map(Number); const n=M*1000000+m*1000+p; const floor=({22:22022002,24:24015000})[M]??(M>=26?0:Infinity); process.exit(n>=floor?0:1)' >/dev/null 2>&1
+}
+
 ensure_node() {
-  # 1. A good-enough system Node (>= MIN_NODE_MAJOR, with npm)? Use it unchanged — today's behavior.
+  # 1. A package-supported system Node with npm? Use it unchanged.
   if command -v node >/dev/null 2>&1; then
-    local sys_node sys_major
+    local sys_node
     sys_node="$(command -v node)"
-    sys_major="$("$sys_node" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-    if [ "$sys_major" -ge "$MIN_NODE_MAJOR" ] && command -v npm >/dev/null 2>&1; then
+    if node_supported "$sys_node" && command -v npm >/dev/null 2>&1; then
       NODE_BIN="$sys_node"
       ok "Using system Node.js $("$NODE_BIN" -v)"
       return
     fi
-    if [ "$sys_major" -ge "$MIN_NODE_MAJOR" ]; then
+    if node_supported "$sys_node"; then
       warn "System Node.js $("$sys_node" -v) found but npm is missing — provisioning a private Node runtime instead."
     else
-      info "System Node.js $("$sys_node" -v) is older than v${MIN_NODE_MAJOR} — provisioning Node ${NODE_LTS_VERSION} privately (no system changes)."
+      info "System Node.js $("$sys_node" -v) is outside the supported range (${SUPPORTED_NODE_RANGE}) — provisioning Node ${NODE_LTS_VERSION} privately (no system changes)."
     fi
   else
     info "Node.js not found — provisioning Node ${NODE_LTS_VERSION} privately (no system changes)."
@@ -75,17 +78,17 @@ ensure_node() {
   case "$(uname -s)" in
     Linux)  os="linux" ;;
     Darwin) os="darwin" ;;
-    *) fail "Automatic Node provisioning supports Linux and macOS only (found $(uname -s)). Install Node.js >= ${MIN_NODE_MAJOR} manually and re-run." ;;
+    *) fail "Automatic Node provisioning supports Linux and macOS only (found $(uname -s)). Install Node.js ${SUPPORTED_NODE_RANGE} manually and re-run." ;;
   esac
   case "$(uname -m)" in
     x86_64|amd64)  arch="x64" ;;
     aarch64|arm64) arch="arm64" ;;
-    *) fail "Automatic Node provisioning supports x64 and arm64 only (found $(uname -m)). Install Node.js >= ${MIN_NODE_MAJOR} manually and re-run." ;;
+    *) fail "Automatic Node provisioning supports x64 and arm64 only (found $(uname -m)). Install Node.js ${SUPPORTED_NODE_RANGE} manually and re-run." ;;
   esac
 
   # The official tarballs are glibc-linked; musl (Alpine) can't run them.
   if [ "$os" = "linux" ] && { [ -f /etc/alpine-release ] || ldd --version 2>&1 | grep -qi musl; }; then
-    fail "This host uses musl libc (e.g. Alpine); the official Node.js binaries need glibc. Install Node.js >= ${MIN_NODE_MAJOR} via your package manager (e.g. 'apk add nodejs npm') and re-run."
+    fail "This host uses musl libc (e.g. Alpine); the official Node.js binaries need glibc. Install Node.js ${SUPPORTED_NODE_RANGE} via your package manager (e.g. 'apk add nodejs npm') and re-run."
   fi
 
   runtime_dir="$APP_DIR/runtime/node"
@@ -126,25 +129,28 @@ ensure_node() {
   # 3. Verify the binary runs before we depend on it, then put it first on PATH so npm/npx/build use it.
   if ! "$node_bin" --version >/dev/null 2>&1; then
     rm -rf "$runtime_dir"
-    fail "The provisioned Node.js binary at $node_bin does not run on this host. Install Node.js >= ${MIN_NODE_MAJOR} manually and re-run."
+    fail "The provisioned Node.js binary at $node_bin does not run on this host. Install Node.js ${SUPPORTED_NODE_RANGE} manually and re-run."
+  fi
+  if ! node_supported "$node_bin"; then
+    rm -rf "$runtime_dir"
+    fail "The provisioned Node.js ${NODE_LTS_VERSION} is outside the supported range (${SUPPORTED_NODE_RANGE}). Choose a supported NODETERM_NODE_VERSION and re-run."
   fi
   NODE_BIN="$node_bin"
   export PATH="$runtime_dir/bin:$PATH"
   ok "Provisioned Node $("$NODE_BIN" -v) at $runtime_dir"
 }
 
-# node-pty is a native module and is (re)built from source against Node's ABI, which needs a C/C++
-# toolchain + python3. Missing tools → warn with the install one-liner, but don't hard-fail: if a
-# prebuilt binary is available the build still succeeds.
+# The native modules are rebuilt from source against Node's ABI. smart-whisper has no prebuilt
+# fallback on this path, so fail before the long install with the exact toolchain command.
 MISSING_BUILD=""
 for tool in make gcc python3; do
   command -v "$tool" >/dev/null 2>&1 || MISSING_BUILD="$MISSING_BUILD $tool"
 done
+command -v c++ >/dev/null 2>&1 || MISSING_BUILD="$MISSING_BUILD c++"
 if [ -n "$MISSING_BUILD" ]; then
-  warn "Missing build tools for the node-pty native module:$MISSING_BUILD"
-  warn "  Debian/Ubuntu:  sudo apt install -y build-essential python3"
-  warn "  Fedora/RHEL:    sudo dnf install -y make gcc gcc-c++ python3"
-  warn "Continuing — install them and re-run this script if the build below fails."
+  fail "Missing native build tools:$MISSING_BUILD
+  Debian/Ubuntu:  sudo apt install -y build-essential python3
+  Fedora/RHEL:    sudo dnf install -y make gcc gcc-c++ python3"
 fi
 
 # tmux is what makes terminal sessions survive restarts; the server falls back to a plain shell
@@ -180,8 +186,8 @@ info "Building renderer + server bundle…"
 npm run build
 npm run server:build
 
-info "Rebuilding node-pty against Node's ABI…"
-npm rebuild node-pty
+info "Patching node-pty and rebuilding native modules against Node's ABI…"
+npm run server:rebuild
 
 [ -f "$APP_DIR/out/server/main.cjs" ] || fail "Build did not produce out/server/main.cjs — check the output above."
 
